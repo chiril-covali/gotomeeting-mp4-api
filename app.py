@@ -8,6 +8,8 @@ from selenium.webdriver.common.by import By
 import time
 import os
 import logging
+import threading
+from queue import Queue
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -16,54 +18,68 @@ logger = logging.getLogger(__name__)
 app = Flask(__name__)
 CORS(app)  # Enable CORS for all routes
 
-def extract_download_link(url):
-    try:
-        # Configure Chrome options
-        chrome_options = Options()
-        chrome_options.add_argument('--headless')
-        chrome_options.add_argument('--no-sandbox')
-        chrome_options.add_argument('--disable-dev-shm-usage')
-        chrome_options.add_argument('--disable-gpu')
-        chrome_options.add_argument('--window-size=1920,1080')
-        chrome_options.add_argument('--disable-extensions')
-        chrome_options.add_argument('--disable-software-rasterizer')
-        
-        # Initialize Chrome driver
-        logger.info("Initializing Chrome driver...")
-        driver = webdriver.Chrome(options=chrome_options)
-        
-        try:
-            # Access the URL
-            logger.info(f"Accessing URL: {url}")
-            driver.get(url)
-            
-            # Wait for the page to load completely
-            time.sleep(5)
-            
-            # Wait for the video element to be visible
-            logger.info("Waiting for video element...")
-            wait = WebDriverWait(driver, 20)  # Increased timeout
-            video_element = wait.until(
-                EC.visibility_of_element_located((By.ID, "videoPlayer_html5_api"))
-            )
-            
-            # Extract the link from the src attribute
-            video_src = video_element.get_attribute("src")
-            logger.info(f"Found video source: {video_src}")
-            
-            return video_src
-            
-        except Exception as e:
-            logger.error(f"Error during extraction: {str(e)}")
-            return None
-            
-        finally:
-            # Always close the browser
-            driver.quit()
+# Global queue for Chrome instances
+chrome_queue = Queue()
+MAX_CHROME_INSTANCES = 1
+
+def init_chrome_driver():
+    chrome_options = Options()
+    chrome_options.add_argument('--headless')
+    chrome_options.add_argument('--no-sandbox')
+    chrome_options.add_argument('--disable-dev-shm-usage')
+    chrome_options.add_argument('--disable-gpu')
+    chrome_options.add_argument('--window-size=1920,1080')
+    chrome_options.add_argument('--disable-extensions')
+    chrome_options.add_argument('--disable-software-rasterizer')
+    chrome_options.add_argument('--disable-web-security')
+    chrome_options.add_argument('--allow-running-insecure-content')
+    chrome_options.add_argument('--disable-blink-features=AutomationControlled')
+    chrome_options.add_argument('--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36')
     
+    return webdriver.Chrome(options=chrome_options)
+
+def get_chrome_driver():
+    try:
+        return chrome_queue.get_nowait()
+    except:
+        return init_chrome_driver()
+
+def return_chrome_driver(driver):
+    try:
+        chrome_queue.put_nowait(driver)
+    except:
+        driver.quit()
+
+def extract_download_link(url):
+    driver = None
+    try:
+        driver = get_chrome_driver()
+        logger.info(f"Accessing URL: {url}")
+        driver.get(url)
+        
+        # Wait for the page to load completely
+        time.sleep(10)
+        
+        # Wait for the video element to be visible
+        logger.info("Waiting for video element...")
+        wait = WebDriverWait(driver, 30)
+        video_element = wait.until(
+            EC.presence_of_element_located((By.ID, "videoPlayer_html5_api"))
+        )
+        
+        # Extract the link from the src attribute
+        video_src = video_element.get_attribute("src")
+        logger.info(f"Found video source: {video_src}")
+        
+        return video_src
+        
     except Exception as e:
-        logger.error(f"Error initializing Chrome: {str(e)}")
+        logger.error(f"Error during extraction: {str(e)}")
         return None
+        
+    finally:
+        if driver:
+            return_chrome_driver(driver)
 
 @app.route('/')
 def index():
@@ -123,4 +139,8 @@ def favicon():
                              'favicon.ico', mimetype='image/vnd.microsoft.icon')
 
 if __name__ == '__main__':
+    # Initialize Chrome driver pool
+    for _ in range(MAX_CHROME_INSTANCES):
+        chrome_queue.put(init_chrome_driver())
+    
     app.run(debug=True, host='0.0.0.0', port=5000) 
