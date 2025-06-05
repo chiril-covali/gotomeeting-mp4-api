@@ -5,11 +5,15 @@ from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.common.by import By
+from selenium.common.exceptions import TimeoutException, WebDriverException
 import time
 import os
 import logging
 import threading
 from queue import Queue
+import gevent
+from gevent import monkey
+monkey.patch_all()
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -55,28 +59,45 @@ def extract_download_link(url):
     try:
         driver = get_chrome_driver()
         logger.info(f"Accessing URL: {url}")
+        
+        # First try to access the page
         driver.get(url)
+        gevent.sleep(10)  # Use gevent.sleep instead of time.sleep
         
-        # Wait for the page to load completely
-        time.sleep(10)
-        
-        # Wait for the video element to be visible
+        # Try to find the video element
         logger.info("Waiting for video element...")
-        wait = WebDriverWait(driver, 30)
-        video_element = wait.until(
-            EC.presence_of_element_located((By.ID, "videoPlayer_html5_api"))
-        )
+        wait = WebDriverWait(driver, 60)  # Increased timeout to 60 seconds
         
-        # Extract the link from the src attribute
-        video_src = video_element.get_attribute("src")
-        logger.info(f"Found video source: {video_src}")
-        
-        return video_src
-        
+        try:
+            video_element = wait.until(
+                EC.presence_of_element_located((By.ID, "videoPlayer_html5_api"))
+            )
+            video_src = video_element.get_attribute("src")
+            logger.info(f"Found video source: {video_src}")
+            return video_src
+            
+        except TimeoutException:
+            logger.error("Timeout waiting for video element")
+            # Try alternative selectors
+            try:
+                video_element = driver.find_element(By.TAG_NAME, "video")
+                video_src = video_element.get_attribute("src")
+                if video_src:
+                    logger.info(f"Found video source using alternative method: {video_src}")
+                    return video_src
+            except:
+                pass
+                
+            # Try to get the page source for debugging
+            logger.error(f"Page source: {driver.page_source[:1000]}")  # Log first 1000 chars
+            return None
+            
+    except WebDriverException as e:
+        logger.error(f"WebDriver error: {str(e)}")
+        return None
     except Exception as e:
         logger.error(f"Error during extraction: {str(e)}")
         return None
-        
     finally:
         if driver:
             return_chrome_driver(driver)
