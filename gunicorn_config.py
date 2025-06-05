@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 import multiprocessing
 import os
 
@@ -26,3 +27,14 @@ proc_name = 'gunicorn_gotomeeting'
 # SSL
 keyfile = None
 certfile = None 
+=======
+bind = "0.0.0.0:10000"
+workers = 1
+timeout = 600
+keepalive = 300
+worker_class = "gevent"
+worker_connections = 1000
+max_requests = 100
+max_requests_jitter = 10
+graceful_timeout = 600 
+>>>>>>> 94f3a3c35c049619c79057ac72e28be3cea66f1d
