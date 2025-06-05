@@ -5,6 +5,7 @@ RUN apt-get update && apt-get install -y \
     wget \
     gnupg \
     unzip \
+    xvfb \
     && wget -q -O - https://dl-ssl.google.com/linux/linux_signing_key.pub | apt-key add - \
     && echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" >> /etc/apt/sources.list.d/google.list \
     && apt-get update \
@@ -29,8 +30,15 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy the rest of the application
 COPY . .
 
+# Create necessary directories
+RUN mkdir -p static
+
 # Expose the port
 EXPOSE 10000
+
+# Set environment variables
+ENV PYTHONUNBUFFERED=1
+ENV DISPLAY=:99
 
 # Run the application
 CMD ["gunicorn", "--config", "gunicorn_config.py", "app:app"] 
