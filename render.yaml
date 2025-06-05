@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: gotomeeting-mp4-api
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn app:app --config gunicorn_config.py
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.0
+      - key: PORT
+        value: 10000
+    healthCheckPath: /
+    autoDeploy: true 
